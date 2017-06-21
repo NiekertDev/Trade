@@ -1,0 +1,28 @@
+name: Trader
+author: Niekert
+version: 0.1.0
+api:
+- 2.0.0
+- 3.0.0
+- 3.0.0-ALPHA1
+- 3.0.0-ALPHA2
+- 3.0.0-ALPHA3
+- 3.0.0-ALPHA4
+- 3.0.0-ALPHA5
+main: Niekert\Trader\Main
+
+commands:
+    trade:
+        description: Trade an item!
+        permission: trade
+        usage: /trade help
+    trades:
+        description: Show all trades!
+        permission: trader.trades
+        usage: /trades
+
+permissions:
+    trader.trade:
+        default: op
+    trader.trade:
+        default: op

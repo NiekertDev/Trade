@@ -1,0 +1,2 @@
+TradeMessage: "" #Message player receives when somebody trades something to him. {Trader} can be used.
+TradeMessageGlobal: "" #Message plugin receives when somebody trades something global. {Trader} can be used.
