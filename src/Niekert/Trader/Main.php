@@ -15,6 +15,7 @@ use pocketmine\event\entity\EntityInventoryChangeEvent;
 use pocketmine\event\Listener;
 use pocketmine\event\player\PlayerInteractEvent;
 use pocketmine\item\Item;
+use pocketmine\math\Vector3;
 use pocketmine\nbt\tag\CompoundTag;
 use pocketmine\nbt\tag\IntTag;
 use pocketmine\nbt\tag\StringTag;
@@ -154,10 +155,22 @@ class Main extends PluginBase implements Listener
     {
         $player = $event->getEntity();
         $newItem = $event->getNewItem();
+        if(!$player instanceof Player){
+            return;
+        }
         if($this->contains($newItem->getCustomName(), "Price")){
             $tradername = $this->get_string_between($newItem->getCustomName(), "From: ", "\n");
             $trader = $this->getServer()->getPlayerExact($tradername);
-            if($trader === null){
+            if (!key_exists($tradername, $this->trades["global"])){
+                $event->setCancelled();
+                return;
+            }
+            $count = $this->trades["global"][$tradername]["Count"];
+            if($newItem->getCount() < $count){
+                $newItem->setCount($this->trades["global"][$tradername]["Count"]);
+            }
+            elseif($trader === null){
+                $event->setCancelled();
                 return;
             }
             $response = $this->AcceptTradeServer($trader, $player);
@@ -203,11 +216,14 @@ class Main extends PluginBase implements Listener
      * @param Item $item
      * @param bool $price
      */
-    public function TradePlayer(Player $trader, Player $player, Item $item, bool $price){
+    public function TradePlayer(Player $trader, Player $player, Item $item, int $price){
+        if (isset($this->trades[$trader->getName()][$player->getName()])){
+            $trader->sendMessage(C::AQUA."[Trader] ".C::RED."Overwriting current trade");
+        }
         $playername = $player->getName();
         $trademessage = str_replace("{Trader}", $trader->getName(), $this->getConfig()->get("TradeMessage"));
         $this->trades[$trader->getName()][$playername]["Id"] = $item->getId();
-        $this->trades["global"][$trader->getName()]["Meta"] = $item->getDamage();
+        $this->trades[$trader->getName()][$playername]["Meta"] = $item->getDamage();
         $this->trades[$trader->getName()][$playername]["Count"] = $item->getCount();
         $this->trades[$trader->getName()][$playername]["Tag"] = $item->getCompoundTag();
         $this->trades[$trader->getName()][$playername]["Price"] = $price;
@@ -221,7 +237,10 @@ class Main extends PluginBase implements Listener
      * @param Item $item
      * @param bool $price
      */
-    public function TradeServer(Player $trader, Item $item, bool $price){
+    public function TradeServer(Player $trader, Item $item, int $price){
+        if (isset($this->trades["global"][$trader->getName()])){
+            $trader->sendMessage(C::AQUA."[Trader] ".C::RED."Overwriting current trade");
+        }
         $trademessage = str_replace("{Trader}", $trader->getName(), $this->getConfig()->get("TradeMessageGlobal"));
         $this->trades["global"][$trader->getName()]["Id"] = $item->getId();
         $this->trades["global"][$trader->getName()]["Meta"] = $item->getDamage();
@@ -320,6 +339,10 @@ class Main extends PluginBase implements Listener
      * @param Player $player
      */
     public function sendChest(Player $player){
+        if(!key_exists("global", $this->trades) OR !is_array($this->trades["global"])){
+            $player->sendMessage(C::AQUA ."[Trader] ".C::RED."There aren't any global trades");
+            return;
+        }
         $nbt = new CompoundTag('', [
             new StringTag('id', Tile::CHEST),
             new IntTag('Trades', 1),
@@ -337,17 +360,40 @@ class Main extends PluginBase implements Listener
         $block->level->sendBlocks([$player], [$block]);
         $economy = EconomyAPI::getInstance();
         $globaltrades = $this->trades["global"];
-        if(is_array($globaltrades)){
-            foreach ($globaltrades as $trader => $trade):
-                $item = Item::get($trade["Id"], $trade["Meta"], $trade["Count"], $trade["Tag"]);
-                $price = $economy->getMonetaryUnit().$trade["Price"];
-                $item->setCustomName(C::RED."From: ".$trader."\n".C::AQUA."Price: ".$price);
+        if(is_array($globaltrades)) {
+            foreach ($globaltrades as $trader => $trade){
+                $item = Item::get($trade["Id"], $trade["Meta"], 1, $trade["Tag"]);
+                $enchants = $item->getEnchantments();
+                $enchantmessage = "";
+                if ($item->hasEnchantments()) {
+                    foreach ($enchants as $enchant) {
+                        if($enchant->getName() !== "unknown") {
+                            $enchantm = $enchant->getName();
+                        }
+                        else{ //CE
+                            $customitemname = $item->getCustomName();
+                            $normalname = Item::get($item->getId())->getName();
+                            $enchantm =  str_replace($normalname."\n", "", $customitemname);
+                        }
+                        if (isset($enchantmessage) AND $enchantmessage !== "") {
+                            $enchantmessage = $enchantmessage . "\n" . $enchantm;
+                        }
+                        else{
+                            $enchantmessage = $enchantm;
+                        }
+                    }
+                }
+                else{
+                    $enchantmessage = "None";
+                }
+                $price = $economy->getMonetaryUnit() . $trade["Price"];
+                $item->setCustomName(C::RED . "From: " . $trader . "\n" . C::AQUA . "Price: " . $price . "\n" . C::GREEN . "Amount: " . $trade["Count"] . "\n" . C::BLUE . "Enchantments: \n" . C::WHITE . $enchantmessage);
+                unset($enchantmessage);
+                unset($enchantm);
                 $tile->getInventory()->addItem($item);
-            endforeach;
+            }
             $player->addWindow($tile->getInventory());
         }
-        else{
-            $player->sendMessage(C::AQUA ."[Trader] ".C::RED."There aren't any global trades");
-        }
+
     }
 }
